@@ -248,18 +248,25 @@ class CartesiaSynthesizerConfig(SynthesizerConfig, type=SynthesizerType.CARTESIA
     experimental_voice_controls: Optional[CartesiaVoiceControls] = None
 
 
-DEFAULT_CAMB_AI_VOICE_ID = 2681
+DEFAULT_CAMB_AI_VOICE_ID = 147320
 DEFAULT_CAMB_AI_LANGUAGE = "en-us"
-CambAiModelId = Literal["mars-8", "mars-8-flash", "mars-8-instruct", "mars-7", "mars-6", "auto"]
+CambAiModelId = Literal["mars-pro", "mars-flash", "mars-instruct"]
+
+# Model-specific native sample rates
+CAMB_AI_MODEL_SAMPLE_RATES = {
+    "mars-flash": 22050,
+    "mars-pro": 48000,
+    "mars-instruct": 22050,
+}
 
 
 class CambAiSynthesizerConfig(SynthesizerConfig, type=SynthesizerType.CAMB_AI.value):  # type: ignore
     api_key: Optional[str] = None
     voice_id: int = DEFAULT_CAMB_AI_VOICE_ID
-    model_id: CambAiModelId = "mars-8-flash"
+    model_id: CambAiModelId = "mars-flash"
     language: str = DEFAULT_CAMB_AI_LANGUAGE
-    speed: float = 1.0
     user_instructions: Optional[str] = None
+    enhance_named_entities_pronunciation: bool = False
 
     @validator("user_instructions")
     def user_instructions_check(cls, user_instructions, values):
@@ -267,6 +274,6 @@ class CambAiSynthesizerConfig(SynthesizerConfig, type=SynthesizerType.CAMB_AI.va
             if len(user_instructions) < 3 or len(user_instructions) > 1000:
                 raise ValueError("user_instructions must be between 3 and 1000 characters.")
             model_id = values.get("model_id")
-            if model_id != "mars-8-instruct":
-                raise ValueError("user_instructions is only supported with mars-8-instruct model.")
+            if model_id != "mars-instruct":
+                raise ValueError("user_instructions is only supported with mars-instruct model.")
         return user_instructions

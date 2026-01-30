@@ -6,14 +6,13 @@ from typing import Optional
 from loguru import logger
 
 from vocode import getenv
-from vocode.streaming.models.audio import AudioEncoding, SamplingRate
+from vocode.streaming.models.audio import AudioEncoding
 from vocode.streaming.models.message import BaseMessage
-from vocode.streaming.models.synthesizer import CambAiSynthesizerConfig
+from vocode.streaming.models.synthesizer import CAMB_AI_MODEL_SAMPLE_RATES, CambAiSynthesizerConfig
 from vocode.streaming.synthesizer.base_synthesizer import BaseSynthesizer, SynthesisResult
 from vocode.streaming.utils.create_task import asyncio_create_task
 
 CAMB_AI_BASE_URL = "https://client.camb.ai/apis"
-CAMB_AI_NATIVE_SAMPLE_RATE = 24000
 
 
 class CambAiException(Exception):
@@ -37,16 +36,18 @@ class CambAiSynthesizer(BaseSynthesizer[CambAiSynthesizerConfig]):
         self.voice_id = synthesizer_config.voice_id
         self.model_id = synthesizer_config.model_id
         self.language = synthesizer_config.language
-        self.speed = synthesizer_config.speed
         self.user_instructions = synthesizer_config.user_instructions
+        self.enhance_named_entities_pronunciation = synthesizer_config.enhance_named_entities_pronunciation
         self.words_per_minute = 150
 
+        # Get native sample rate for the selected model
+        self.native_sample_rate = CAMB_AI_MODEL_SAMPLE_RATES.get(self.model_id, 22050)
         self.needs_resample = False
         self.target_sample_rate = self.synthesizer_config.sampling_rate
 
         if self.synthesizer_config.audio_encoding == AudioEncoding.LINEAR16:
             self.output_format = "pcm_s16le"
-            if self.synthesizer_config.sampling_rate != CAMB_AI_NATIVE_SAMPLE_RATE:
+            if self.synthesizer_config.sampling_rate != self.native_sample_rate:
                 self.needs_resample = True
         elif self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
             self.output_format = "pcm_s16le"
@@ -89,12 +90,10 @@ class CambAiSynthesizer(BaseSynthesizer[CambAiSynthesizerConfig]):
             "output_configuration": {
                 "format": self.output_format,
             },
-            "voice_settings": {
-                "speed": self.speed,
-            },
+            "enhance_named_entities_pronunciation": self.enhance_named_entities_pronunciation,
         }
 
-        if self.user_instructions and self.model_id == "mars-8-instruct":
+        if self.user_instructions and self.model_id == "mars-instruct":
             body["user_instructions"] = self.user_instructions
 
         chunk_queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue()
@@ -117,7 +116,7 @@ class CambAiSynthesizer(BaseSynthesizer[CambAiSynthesizerConfig]):
                 str(synthesizer_config.voice_id),
                 str(synthesizer_config.model_id),
                 str(synthesizer_config.language),
-                str(synthesizer_config.speed),
+                str(synthesizer_config.enhance_named_entities_pronunciation),
                 synthesizer_config.audio_encoding,
             )
         )
@@ -151,7 +150,7 @@ class CambAiSynthesizer(BaseSynthesizer[CambAiSynthesizerConfig]):
                 if status_code == 401:
                     raise CambAiException(
                         "Invalid Camb.ai API key. Set CAMB_API_KEY environment variable "
-                        "with your API key from https://camb.ai"
+                        "with your API key from https://docs.camb.ai/"
                     )
                 elif status_code == 403:
                     raise CambAiException(
@@ -174,7 +173,7 @@ class CambAiSynthesizer(BaseSynthesizer[CambAiSynthesizerConfig]):
                 if self.needs_resample:
                     processed_chunk = self._resample_chunk(
                         chunk,
-                        CAMB_AI_NATIVE_SAMPLE_RATE,
+                        self.native_sample_rate,
                         self.target_sample_rate,
                     )
                 if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
